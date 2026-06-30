@@ -1,6 +1,11 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import * as L from 'leaflet';
 import { CommonModule } from '@angular/common';
+import {
+  DangerFeature,
+  DangerService,
+  DangerType,
+} from '../dangers/danger.service';
 
 @Component({
   selector: 'app-boating-map',
@@ -14,6 +19,21 @@ export class BoatingMapComponent implements OnInit, OnDestroy {
   private userMarker: L.Marker | undefined;
   private locationWatchId: number | undefined;
   followMode: boolean = false;
+
+  // --- Danger-mapping state (exposed to the template toolbar) ---
+  private dangerLayer: L.GeoJSON | undefined;
+  editMode = false;
+  selectedDangerType: DangerType = 'rock_submerged';
+  readonly dangerTypes: { value: DangerType; label: string }[] = [
+    { value: 'rock_submerged', label: 'Underwater rock' },
+    { value: 'rock_awash', label: 'Rock awash' },
+    { value: 'rock_above', label: 'Above-water rock' },
+    { value: 'obstruction', label: 'Obstruction / wreck' },
+    { value: 'shoal', label: 'Shoal (shallow area)' },
+    { value: 'sounding', label: 'Depth sounding' },
+  ];
+
+  constructor(private dangers: DangerService) {}
 
   ngOnInit(): void {
     // initMap() initialises the map asynchronously (it waits for geolocation)
@@ -168,8 +188,28 @@ export class BoatingMapComponent implements OnInit, OnDestroy {
       'Depth shading': depthShadingLayer,
     };
 
+    // Our own "Dangers" layer: rocks, shoals and soundings the user maps
+    // themselves (manually now, from satellite imagery and sensors later).
+    this.dangerLayer = L.geoJSON(undefined, {
+      pointToLayer: (feature, latlng) =>
+        L.marker(latlng, {
+          icon: this.dangerIcon(feature as DangerFeature),
+        }),
+      onEachFeature: (feature, layer) =>
+        this.bindDangerPopup(feature as DangerFeature, layer),
+    }).addTo(this.map);
+    overlayMaps['Dangers (self-mapped)'] = this.dangerLayer;
+    this.loadDangers();
+
     // Layer switcher so the user can toggle bases and overlays.
     L.control.layers(baseMaps, overlayMaps).addTo(this.map);
+
+    // Add a danger when the map is clicked while edit mode is on.
+    this.map.on('click', (event: L.LeafletMouseEvent) => {
+      if (this.editMode) {
+        this.addDangerAt(event.latlng);
+      }
+    });
 
     // Collapsible attribution: a small "i" button that toggles the data
     // credits. This keeps the chart clean while still crediting the sources,
@@ -178,6 +218,112 @@ export class BoatingMapComponent implements OnInit, OnDestroy {
 
     // The map now exists, so it is safe to attach the move handlers.
     this.setupMapEventHandlers();
+  }
+
+  /** Load curated + saved danger points and render them. */
+  private async loadDangers(): Promise<void> {
+    await this.dangers.loadCurated();
+    this.refreshDangerLayer();
+  }
+
+  private refreshDangerLayer(): void {
+    if (!this.dangerLayer) {
+      return;
+    }
+    this.dangerLayer.clearLayers();
+    this.dangerLayer.addData(this.dangers.collection());
+  }
+
+  /** Map a danger feature to a chart-style symbol. */
+  private dangerIcon(feature: DangerFeature): L.DivIcon {
+    const type = feature.properties.type;
+    const depth = feature.properties.depth;
+    const symbols: Record<DangerType, string> = {
+      rock_submerged: '✳',
+      rock_awash: '⊕',
+      rock_above: '+',
+      obstruction: '⊗',
+      shoal: '~',
+      sounding: depth != null ? String(depth) : '·',
+    };
+    const label =
+      depth != null && type !== 'sounding'
+        ? `<span class="danger-symbol__depth">${depth}</span>`
+        : '';
+    return L.divIcon({
+      className: `danger-symbol danger-symbol--${type}`,
+      html: `${symbols[type]}${label}`,
+      iconSize: [22, 22],
+      iconAnchor: [11, 11],
+    });
+  }
+
+  private bindDangerPopup(feature: DangerFeature, layer: L.Layer): void {
+    const props = feature.properties;
+    const typeLabel =
+      this.dangerTypes.find((entry) => entry.value === props.type)?.label ??
+      props.type;
+    const lines = [
+      `<strong>${typeLabel}</strong>`,
+      props.depth != null ? `Depth: ${props.depth} m` : '',
+      `Source: ${props.source}`,
+      props.note ? `Note: ${props.note}` : '',
+    ].filter(Boolean);
+
+    const container = L.DomUtil.create('div', 'danger-popup');
+    container.innerHTML = lines.join('<br>');
+
+    if (this.dangers.isUserAdded(feature)) {
+      const remove = L.DomUtil.create('button', 'danger-popup__delete', container);
+      remove.type = 'button';
+      remove.textContent = 'Delete';
+      L.DomEvent.on(remove, 'click', () => {
+        this.dangers.remove(feature);
+        this.refreshDangerLayer();
+        this.map?.closePopup();
+      });
+    }
+
+    layer.bindPopup(container);
+  }
+
+  /** Add a danger of the currently-selected type at a clicked location. */
+  private addDangerAt(latlng: L.LatLng): void {
+    let depth: number | null = null;
+    if (
+      this.selectedDangerType === 'sounding' ||
+      this.selectedDangerType === 'shoal'
+    ) {
+      const entered = window.prompt('Depth in metres (optional):', '');
+      if (entered) {
+        const parsed = Number(entered.replace(',', '.'));
+        depth = Number.isFinite(parsed) ? parsed : null;
+      }
+    }
+    this.dangers.add(latlng.lat, latlng.lng, {
+      type: this.selectedDangerType,
+      depth,
+      source: 'manual',
+      verified: true,
+    });
+    this.refreshDangerLayer();
+  }
+
+  /** Toolbar actions (bound from the template). */
+  toggleEditMode(): void {
+    this.editMode = !this.editMode;
+    const container = this.map?.getContainer();
+    if (container) {
+      container.style.cursor = this.editMode ? 'crosshair' : '';
+    }
+  }
+
+  onDangerTypeChange(value: string): void {
+    this.selectedDangerType = value as DangerType;
+  }
+
+  exportDangers(): void {
+    this.dangers.export();
   }
 
   private addAttributionMenu(): void {
