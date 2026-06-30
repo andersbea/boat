@@ -38,6 +38,7 @@ export class BoatingMapComponent implements OnInit, OnDestroy {
           this.map = L.map('map', {
             center: [lat, lng],
             zoom: 13, // Start with a more zoomed-in level when user's location is found
+            attributionControl: false, // Private use: keep the chart clean
           });
 
           // Add a marker to indicate user's current location
@@ -74,6 +75,7 @@ export class BoatingMapComponent implements OnInit, OnDestroy {
     this.map = L.map('map', {
       center: [59.3293, 18.0686],
       zoom: 10,
+      attributionControl: false, // Private use: keep the chart clean
     });
 
     // Add base and overlay layers
@@ -90,29 +92,31 @@ export class BoatingMapComponent implements OnInit, OnDestroy {
     // It supplies the depth shading and depth contours that reveal shoals and
     // shallow ground that a plain street map cannot show.
     const emodnetWmsUrl = 'https://ows.emodnet-bathymetry.eu/wms';
-    const emodnetAttribution =
-      '&copy; <a href="https://emodnet.ec.europa.eu/en/bathymetry">EMODnet Bathymetry</a>';
 
     // --- Base layers (pick one) ---
+    // This is a boating app, so land is intentionally de-emphasised: the
+    // default base is a light, muted basemap where the water reads clearly and
+    // the land recedes into the background.
 
-    // Plain street/land base.
+    // Muted "sea-focused" base (CARTO Positron): light land, clean water.
+    const seaBaseLayer = L.tileLayer(
+      'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+      { maxZoom: 20 }
+    );
+
+    // Full-detail street/land base, kept available as an option.
     const openStreetMapLayer = L.tileLayer(
       'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-      {
-        attribution:
-          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-        maxZoom: 19,
-      }
+      { maxZoom: 19 }
     );
 
     // Depth-shaded nautical base: atlas-style colouring where shallow water is
-    // clearly distinguished from deep water, with land drawn in.
+    // clearly distinguished from deep water.
     const emodnetDepthBase = L.tileLayer.wms(emodnetWmsUrl, {
       layers: 'emodnet:mean_atlas_land',
       format: 'image/png',
       transparent: false,
       version: '1.3.0',
-      attribution: emodnetAttribution,
     });
 
     // --- Overlay layers ---
@@ -121,11 +125,7 @@ export class BoatingMapComponent implements OnInit, OnDestroy {
     // (rendered from the OpenStreetMap seamark:* tagging scheme).
     const seaMarkLayer = L.tileLayer(
       'https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png',
-      {
-        attribution:
-          '&copy; <a href="https://www.openseamap.org/">OpenSeaMap</a> contributors',
-        maxZoom: 18,
-      }
+      { maxZoom: 18 }
     );
 
     // Numbered depth contours from EMODnet, drawn transparently on top of the
@@ -135,28 +135,31 @@ export class BoatingMapComponent implements OnInit, OnDestroy {
       format: 'image/png',
       transparent: true,
       version: '1.3.0',
-      attribution: emodnetAttribution,
     });
 
-    // Multi-colour depth shading as a transparent overlay, so it can be laid on
-    // top of the OpenStreetMap base instead of replacing it.
+    // Multi-colour depth shading as a transparent overlay. EMODnet's grid is
+    // coarse (~115 m), so it looks blocky when zoomed right in; it is therefore
+    // an opt-in overlay rather than on by default, handy for a quick read of
+    // where the shallow water lies when planning a passage.
     const depthShadingLayer = L.tileLayer.wms(emodnetWmsUrl, {
       layers: 'emodnet:mean_multicolour',
       format: 'image/png',
       transparent: true,
       version: '1.3.0',
-      attribution: emodnetAttribution,
+      opacity: 0.6,
     });
 
-    // Default view: street base + seamarks (familiar) plus depth contours so
-    // shallow ground and dangers are visible out of the box.
-    openStreetMapLayer.addTo(this.map);
+    // Default view: muted sea base (land de-emphasised) + seamarks + depth
+    // contours, so the water, the dangers and the depths are the focus while
+    // the chart stays clean.
+    seaBaseLayer.addTo(this.map);
     seaMarkLayer.addTo(this.map);
     depthContourLayer.addTo(this.map);
 
     const baseMaps: L.Control.LayersObject = {
-      OpenStreetMap: openStreetMapLayer,
+      'Sea (light)': seaBaseLayer,
       'Sea depth (EMODnet)': emodnetDepthBase,
+      OpenStreetMap: openStreetMapLayer,
     };
 
     const overlayMaps: L.Control.LayersObject = {
