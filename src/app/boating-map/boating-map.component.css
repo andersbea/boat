@@ -45,3 +45,21 @@
 .danger-toolbar__hint {
   color: #555;
 }
+
+.signalk-status {
+  position: absolute;
+  bottom: 30px;
+  right: 90px;
+  z-index: 1000;
+  border: none;
+  border-radius: 5px;
+  padding: 8px 10px;
+  cursor: pointer;
+  font: 12px/1 system-ui, sans-serif;
+  color: #fff;
+  background: #777;
+}
+
+.signalk-status--connected {
+  background: #2e7d32;
+}

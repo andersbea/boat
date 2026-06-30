@@ -4,6 +4,16 @@
   {{ followMode ? 'Following' : 'Follow' }}
 </button>
 
+<button
+  type="button"
+  class="signalk-status"
+  [class.signalk-status--connected]="signalkStatus === 'connected'"
+  (click)="fitVessels()"
+  title="Click to centre on live vessels"
+>
+  Signal K: {{ signalkStatus }}<span *ngIf="vesselCount"> · {{ vesselCount }} vessels</span>
+</button>
+
 <div class="danger-toolbar" [class.danger-toolbar--editing]="editMode">
   <button
     type="button"
