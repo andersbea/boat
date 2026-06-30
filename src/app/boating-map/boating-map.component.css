@@ -1,0 +1,47 @@
+.danger-toolbar {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: calc(100vw - 20px);
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 6px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  font: 13px/1.2 system-ui, sans-serif;
+}
+
+.danger-toolbar__toggle,
+.danger-toolbar__export {
+  border: none;
+  border-radius: 4px;
+  padding: 7px 12px;
+  cursor: pointer;
+  color: #fff;
+  background: #007bff;
+}
+
+.danger-toolbar--editing .danger-toolbar__toggle {
+  background: #d9534f;
+}
+
+.danger-toolbar__export {
+  background: #2e7d32;
+}
+
+.danger-toolbar__select {
+  padding: 6px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.danger-toolbar__hint {
+  color: #555;
+}

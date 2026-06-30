@@ -74,3 +74,47 @@ body {
 .attribution-menu__panel a {
   color: #0078a8;
 }
+
+/* Self-mapped danger symbols (Leaflet divIcons, global scope) */
+.danger-symbol {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 700 16px/1 system-ui, sans-serif;
+  color: #c0007a; /* magenta, like chart hazards */
+  text-shadow:
+    0 0 2px #fff,
+    0 0 2px #fff,
+    0 0 2px #fff;
+  background: transparent;
+}
+
+.danger-symbol--sounding {
+  font-size: 12px;
+  color: #333;
+}
+
+.danger-symbol--shoal {
+  color: #1565c0;
+}
+
+.danger-symbol__depth {
+  margin-left: 1px;
+  font-size: 9px;
+  font-weight: 600;
+  color: #333;
+}
+
+.danger-popup {
+  font: 12px/1.5 system-ui, sans-serif;
+}
+
+.danger-popup__delete {
+  margin-top: 8px;
+  border: none;
+  border-radius: 4px;
+  padding: 5px 10px;
+  cursor: pointer;
+  color: #fff;
+  background: #d9534f;
+}

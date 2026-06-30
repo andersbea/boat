@@ -1,2 +1,35 @@
 <div id="map" class="full-screen-map"></div>
-<button (click)="toggleFollowMode()" class="follow-button">{{ followMode ? 'Following' : 'Follow' }}</button>
+
+<button (click)="toggleFollowMode()" class="follow-button">
+  {{ followMode ? 'Following' : 'Follow' }}
+</button>
+
+<div class="danger-toolbar" [class.danger-toolbar--editing]="editMode">
+  <button
+    type="button"
+    class="danger-toolbar__toggle"
+    (click)="toggleEditMode()"
+  >
+    {{ editMode ? 'Done' : 'Map dangers' }}
+  </button>
+
+  <ng-container *ngIf="editMode">
+    <select
+      class="danger-toolbar__select"
+      [value]="selectedDangerType"
+      (change)="onDangerTypeChange($any($event.target).value)"
+    >
+      <option *ngFor="let type of dangerTypes" [value]="type.value">
+        {{ type.label }}
+      </option>
+    </select>
+    <span class="danger-toolbar__hint">Tap the map to drop a point</span>
+    <button
+      type="button"
+      class="danger-toolbar__export"
+      (click)="exportDangers()"
+    >
+      Export GeoJSON
+    </button>
+  </ng-container>
+</div>
