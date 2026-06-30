@@ -171,8 +171,64 @@ export class BoatingMapComponent implements OnInit, OnDestroy {
     // Layer switcher so the user can toggle bases and overlays.
     L.control.layers(baseMaps, overlayMaps).addTo(this.map);
 
+    // Collapsible attribution: a small "i" button that toggles the data
+    // credits. This keeps the chart clean while still crediting the sources,
+    // which the OpenStreetMap / OpenSeaMap / EMODnet / CARTO licences require.
+    this.addAttributionMenu();
+
     // The map now exists, so it is safe to attach the move handlers.
     this.setupMapEventHandlers();
+  }
+
+  private addAttributionMenu(): void {
+    if (!this.map) {
+      return;
+    }
+
+    const AttributionMenu = L.Control.extend({
+      options: { position: 'bottomleft' as L.ControlPosition },
+      onAdd: () => {
+        const container = L.DomUtil.create(
+          'div',
+          'leaflet-control attribution-menu'
+        );
+
+        const button = L.DomUtil.create(
+          'a',
+          'attribution-menu__button',
+          container
+        );
+        button.href = '#';
+        button.title = 'Map data sources';
+        button.setAttribute('role', 'button');
+        button.setAttribute('aria-label', 'Map data sources');
+        button.textContent = 'i';
+
+        const panel = L.DomUtil.create(
+          'div',
+          'attribution-menu__panel',
+          container
+        );
+        panel.innerHTML = [
+          'Map data &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
+          'Nautical marks &copy; <a href="https://www.openseamap.org/" target="_blank" rel="noopener">OpenSeaMap</a>',
+          'Depths &copy; <a href="https://emodnet.ec.europa.eu/en/bathymetry" target="_blank" rel="noopener">EMODnet Bathymetry</a>',
+          'Basemap &copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>',
+        ].join('<br>');
+
+        L.DomEvent.on(button, 'click', (event) => {
+          L.DomEvent.preventDefault(event);
+          container.classList.toggle('attribution-menu--open');
+        });
+
+        L.DomEvent.disableClickPropagation(container);
+        L.DomEvent.disableScrollPropagation(container);
+
+        return container;
+      },
+    });
+
+    this.map.addControl(new AttributionMenu());
   }
 
   private setupMapEventHandlers(): void {

@@ -31,3 +31,46 @@ body {
 .follow-button:hover {
   background-color: #0056b3;
 }
+
+/* Collapsible map-data attribution menu (Leaflet control, global scope) */
+.attribution-menu {
+  margin: 0 0 10px 10px;
+}
+
+.attribution-menu__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  background: #fff;
+  border-radius: 4px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  color: #333;
+  font: italic 700 15px/1 Georgia, "Times New Roman", serif;
+  text-decoration: none;
+}
+
+.attribution-menu__button:hover {
+  background: #f4f4f4;
+}
+
+.attribution-menu__panel {
+  display: none;
+  margin-top: 6px;
+  max-width: 240px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 4px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  font: 11px/1.5 system-ui, sans-serif;
+  color: #333;
+}
+
+.attribution-menu--open .attribution-menu__panel {
+  display: block;
+}
+
+.attribution-menu__panel a {
+  color: #0078a8;
+}
