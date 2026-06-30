@@ -16,9 +16,10 @@ export class BoatingMapComponent implements OnInit, OnDestroy {
   followMode: boolean = false;
 
   ngOnInit(): void {
+    // initMap() initialises the map asynchronously (it waits for geolocation)
+    // and wires up the layers/handlers itself once the map exists, so we must
+    // not touch this.map here while it is still undefined.
     this.initMap();
-    this.addBaseAndOverlayLayers();
-    this.setupMapEventHandlers();
   }
 
   ngOnDestroy(): void {
@@ -84,48 +85,91 @@ export class BoatingMapComponent implements OnInit, OnDestroy {
       return;
     }
 
-    // Define OpenStreetMap as the base layer
+    // EMODnet Bathymetry is a free, OGC-standard WMS covering all European
+    // seas (including the Baltic / Swedish archipelago) under an open licence.
+    // It supplies the depth shading and depth contours that reveal shoals and
+    // shallow ground that a plain street map cannot show.
+    const emodnetWmsUrl = 'https://ows.emodnet-bathymetry.eu/wms';
+    const emodnetAttribution =
+      '&copy; <a href="https://emodnet.ec.europa.eu/en/bathymetry">EMODnet Bathymetry</a>';
+
+    // --- Base layers (pick one) ---
+
+    // Plain street/land base.
     const openStreetMapLayer = L.tileLayer(
-      'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
-      // {
-      //   attribution:
-      //     '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-      // }
+      'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      {
+        attribution:
+          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxZoom: 19,
+      }
     );
 
-    // Define OpenSeaMap layer for nautical markers
-    const openSeaMapLayer = L.tileLayer(
-      'https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png'
-      // {
-      //   attribution:
-      //     '&copy; <a href="https://www.openseamap.org/">OpenSeaMap</a> contributors',
-      // }
+    // Depth-shaded nautical base: atlas-style colouring where shallow water is
+    // clearly distinguished from deep water, with land drawn in.
+    const emodnetDepthBase = L.tileLayer.wms(emodnetWmsUrl, {
+      layers: 'emodnet:mean_atlas_land',
+      format: 'image/png',
+      transparent: false,
+      version: '1.3.0',
+      attribution: emodnetAttribution,
+    });
+
+    // --- Overlay layers ---
+
+    // OpenSeaMap seamarks: rocks, wrecks, obstructions, buoys, beacons, etc.
+    // (rendered from the OpenStreetMap seamark:* tagging scheme).
+    const seaMarkLayer = L.tileLayer(
+      'https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png',
+      {
+        attribution:
+          '&copy; <a href="https://www.openseamap.org/">OpenSeaMap</a> contributors',
+        maxZoom: 18,
+      }
     );
 
-    // Define bathymetry (depth contours) layer from OpenSeaMap
-    // const depthContourLayer = L.tileLayer(
-    //   'https://tiles.openseamap.org/bathymetry/{z}/{x}/{y}.png',
-    //   // {
-    //   //   attribution:
-    //   //     '&copy; <a href="https://www.openseamap.org/">OpenSeaMap Bathymetry</a> contributors',
-    //   // }
-    // );
+    // Numbered depth contours from EMODnet, drawn transparently on top of the
+    // chosen base so you can read the depth of the water you are crossing.
+    const depthContourLayer = L.tileLayer.wms(emodnetWmsUrl, {
+      layers: 'emodnet:contours',
+      format: 'image/png',
+      transparent: true,
+      version: '1.3.0',
+      attribution: emodnetAttribution,
+    });
 
-    // Add OpenStreetMap as the base layer
+    // Multi-colour depth shading as a transparent overlay, so it can be laid on
+    // top of the OpenStreetMap base instead of replacing it.
+    const depthShadingLayer = L.tileLayer.wms(emodnetWmsUrl, {
+      layers: 'emodnet:mean_multicolour',
+      format: 'image/png',
+      transparent: true,
+      version: '1.3.0',
+      attribution: emodnetAttribution,
+    });
+
+    // Default view: street base + seamarks (familiar) plus depth contours so
+    // shallow ground and dangers are visible out of the box.
     openStreetMapLayer.addTo(this.map);
+    seaMarkLayer.addTo(this.map);
+    depthContourLayer.addTo(this.map);
 
-    // Define overlay layers
-    const overlayMaps: L.Control.LayersObject = {
-      'Nautical Markers': openSeaMapLayer,
-      // 'Depth Contours': depthContourLayer,
+    const baseMaps: L.Control.LayersObject = {
+      OpenStreetMap: openStreetMapLayer,
+      'Sea depth (EMODnet)': emodnetDepthBase,
     };
 
-    // Add layer control to toggle overlays
-    L.control.layers({}, overlayMaps).addTo(this.map);
+    const overlayMaps: L.Control.LayersObject = {
+      'Nautical markers (rocks, wrecks)': seaMarkLayer,
+      'Depth contours': depthContourLayer,
+      'Depth shading': depthShadingLayer,
+    };
 
-    // Optionally, add one or both overlays initially
-    openSeaMapLayer.addTo(this.map);
-    // depthContourLayer.addTo(this.map);
+    // Layer switcher so the user can toggle bases and overlays.
+    L.control.layers(baseMaps, overlayMaps).addTo(this.map);
+
+    // The map now exists, so it is safe to attach the move handlers.
+    this.setupMapEventHandlers();
   }
 
   private setupMapEventHandlers(): void {
