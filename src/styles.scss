@@ -118,3 +118,26 @@ body {
   color: #fff;
   background: #d9534f;
 }
+
+/* Live vessels from Signal K (own ship + AIS targets) */
+.vessel-icon__arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  font-size: 18px;
+  line-height: 1;
+  /* The glyph points right (east = 0°); rotation is applied inline per heading. */
+  transform-origin: 50% 50%;
+}
+
+.vessel-icon--ais .vessel-icon__arrow {
+  color: #0a58ca;
+  text-shadow: 0 0 2px #fff, 0 0 2px #fff;
+}
+
+.vessel-icon--self .vessel-icon__arrow {
+  color: #d6336c;
+  text-shadow: 0 0 2px #fff, 0 0 2px #fff;
+}

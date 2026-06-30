@@ -6,6 +6,12 @@ import {
   DangerService,
   DangerType,
 } from '../dangers/danger.service';
+import {
+  SignalKService,
+  SignalKStatus,
+  VesselState,
+} from '../signalk/signalk.service';
+import { Subscription } from 'rxjs';
 
 @Component({
   selector: 'app-boating-map',
@@ -33,7 +39,18 @@ export class BoatingMapComponent implements OnInit, OnDestroy {
     { value: 'sounding', label: 'Depth sounding' },
   ];
 
-  constructor(private dangers: DangerService) {}
+  // --- Signal K / live vessel state (own ship + AIS targets) ---
+  private aisLayer: L.LayerGroup | undefined;
+  private vesselMarkers = new Map<string, L.Marker>();
+  private signalkSub: Subscription | undefined;
+  private statusSub: Subscription | undefined;
+  signalkStatus: SignalKStatus = 'disconnected';
+  vesselCount = 0;
+
+  constructor(
+    private dangers: DangerService,
+    private signalk: SignalKService
+  ) {}
 
   ngOnInit(): void {
     // initMap() initialises the map asynchronously (it waits for geolocation)
@@ -44,6 +61,9 @@ export class BoatingMapComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.stopFollowingUser();
+    this.signalkSub?.unsubscribe();
+    this.statusSub?.unsubscribe();
+    this.signalk.disconnect();
   }
 
   private initMap(): void {
@@ -91,11 +111,12 @@ export class BoatingMapComponent implements OnInit, OnDestroy {
   }
 
   private initializeMapWithDefaultLocation(): void {
-    // Initialize the map with a default location (Stockholm, Sweden)
+    // Default to Gräskö in the outer Stockholm archipelago — the home water
+    // this app is being tuned for.
     this.map = L.map('map', {
-      center: [59.3293, 18.0686],
-      zoom: 10,
-      attributionControl: false, // Private use: keep the chart clean
+      center: [59.6808, 19.0244],
+      zoom: 13,
+      attributionControl: false, // keep the chart clean
     });
 
     // Add base and overlay layers
@@ -201,6 +222,11 @@ export class BoatingMapComponent implements OnInit, OnDestroy {
     overlayMaps['Dangers (self-mapped)'] = this.dangerLayer;
     this.loadDangers();
 
+    // Live vessels from Signal K (own ship + AIS targets).
+    this.aisLayer = L.layerGroup().addTo(this.map);
+    overlayMaps['Vessels (AIS / Signal K)'] = this.aisLayer;
+    this.connectSignalK();
+
     // Layer switcher so the user can toggle bases and overlays.
     L.control.layers(baseMaps, overlayMaps).addTo(this.map);
 
@@ -218,6 +244,94 @@ export class BoatingMapComponent implements OnInit, OnDestroy {
 
     // The map now exists, so it is safe to attach the move handlers.
     this.setupMapEventHandlers();
+  }
+
+  /** Connect to a Signal K server and keep the vessel layer in sync. */
+  private connectSignalK(): void {
+    this.statusSub = this.signalk.status$.subscribe((status) => {
+      this.signalkStatus = status;
+    });
+    this.signalkSub = this.signalk.vessels$.subscribe((vessels) => {
+      this.renderVessels(vessels);
+    });
+    // Default to the public demo server (no hardware needed). Swap for a
+    // boat's own server later, e.g. signalk.connect('192.168.1.50:3000').
+    this.signalk.connect();
+  }
+
+  private renderVessels(vessels: VesselState[]): void {
+    if (!this.aisLayer) {
+      return;
+    }
+    const located = vessels.filter(
+      (vessel) => vessel.latitude != null && vessel.longitude != null
+    );
+    this.vesselCount = located.length;
+
+    const seen = new Set<string>();
+    for (const vessel of located) {
+      seen.add(vessel.id);
+      const latlng: L.LatLngExpression = [vessel.latitude!, vessel.longitude!];
+      let marker = this.vesselMarkers.get(vessel.id);
+      if (marker) {
+        marker.setLatLng(latlng);
+        marker.setIcon(this.vesselIcon(vessel));
+      } else {
+        marker = L.marker(latlng, { icon: this.vesselIcon(vessel) });
+        marker.addTo(this.aisLayer);
+        this.vesselMarkers.set(vessel.id, marker);
+      }
+      marker.bindPopup(this.vesselPopup(vessel));
+    }
+
+    // Drop markers for vessels that are gone.
+    for (const [id, marker] of this.vesselMarkers) {
+      if (!seen.has(id)) {
+        this.aisLayer.removeLayer(marker);
+        this.vesselMarkers.delete(id);
+      }
+    }
+  }
+
+  private vesselIcon(vessel: VesselState): L.DivIcon {
+    const rotationRad = vessel.headingTrue ?? vessel.courseOverGround ?? 0;
+    // The ➤ glyph points east (0°); subtract 90° so heading 0 (north) points up.
+    const rotationDeg = (rotationRad * 180) / Math.PI - 90;
+    const kind = vessel.isSelf ? 'self' : 'ais';
+    return L.divIcon({
+      className: `vessel-icon vessel-icon--${kind}`,
+      html: `<div class="vessel-icon__arrow" style="transform: rotate(${rotationDeg}deg)">➤</div>`,
+      iconSize: [24, 24],
+      iconAnchor: [12, 12],
+    });
+  }
+
+  private vesselPopup(vessel: VesselState): string {
+    const knots =
+      vessel.speedOverGround != null
+        ? (vessel.speedOverGround * 1.94384).toFixed(1)
+        : null;
+    const cog =
+      vessel.courseOverGround != null
+        ? Math.round((vessel.courseOverGround * 180) / Math.PI)
+        : null;
+    const lines = [
+      `<strong>${vessel.name ?? (vessel.isSelf ? 'Own vessel' : 'Vessel')}</strong>`,
+      vessel.mmsi ? `MMSI: ${vessel.mmsi}` : '',
+      knots != null ? `SOG: ${knots} kn` : '',
+      cog != null ? `COG: ${cog}°` : '',
+      vessel.depth != null ? `Depth: ${vessel.depth.toFixed(1)} m` : '',
+    ].filter(Boolean);
+    return lines.join('<br>');
+  }
+
+  /** Centre the map on the live Signal K fleet (e.g. the demo vessels). */
+  fitVessels(): void {
+    if (!this.map || this.vesselMarkers.size === 0) {
+      return;
+    }
+    const group = L.featureGroup([...this.vesselMarkers.values()]);
+    this.map.fitBounds(group.getBounds().pad(0.3));
   }
 
   /** Load curated + saved danger points and render them. */
