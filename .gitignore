@@ -40,3 +40,9 @@ testem.log
 # System files
 .DS_Store
 Thumbs.db
+
+# Satellite-derived bathymetry tool: secrets, downloaded rasters, outputs
+tools/sdb/.env
+tools/sdb/out/
+tools/sdb/__pycache__/
+*.tiff
