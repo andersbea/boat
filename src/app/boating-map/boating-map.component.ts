@@ -16,9 +16,10 @@ export class BoatingMapComponent implements OnInit, OnDestroy {
   followMode: boolean = false;
 
   ngOnInit(): void {
+    // initMap() initialises the map asynchronously (it waits for geolocation)
+    // and wires up the layers/handlers itself once the map exists, so we must
+    // not touch this.map here while it is still undefined.
     this.initMap();
-    this.addBaseAndOverlayLayers();
-    this.setupMapEventHandlers();
   }
 
   ngOnDestroy(): void {
@@ -37,6 +38,7 @@ export class BoatingMapComponent implements OnInit, OnDestroy {
           this.map = L.map('map', {
             center: [lat, lng],
             zoom: 13, // Start with a more zoomed-in level when user's location is found
+            attributionControl: false, // Private use: keep the chart clean
           });
 
           // Add a marker to indicate user's current location
@@ -73,6 +75,7 @@ export class BoatingMapComponent implements OnInit, OnDestroy {
     this.map = L.map('map', {
       center: [59.3293, 18.0686],
       zoom: 10,
+      attributionControl: false, // Private use: keep the chart clean
     });
 
     // Add base and overlay layers
@@ -84,48 +87,92 @@ export class BoatingMapComponent implements OnInit, OnDestroy {
       return;
     }
 
-    // Define OpenStreetMap as the base layer
+    // EMODnet Bathymetry is a free, OGC-standard WMS covering all European
+    // seas (including the Baltic / Swedish archipelago) under an open licence.
+    // It supplies the depth shading and depth contours that reveal shoals and
+    // shallow ground that a plain street map cannot show.
+    const emodnetWmsUrl = 'https://ows.emodnet-bathymetry.eu/wms';
+
+    // --- Base layers (pick one) ---
+    // This is a boating app, so land is intentionally de-emphasised: the
+    // default base is a light, muted basemap where the water reads clearly and
+    // the land recedes into the background.
+
+    // Muted "sea-focused" base (CARTO Positron): light land, clean water.
+    const seaBaseLayer = L.tileLayer(
+      'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+      { maxZoom: 20 }
+    );
+
+    // Full-detail street/land base, kept available as an option.
     const openStreetMapLayer = L.tileLayer(
-      'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
-      // {
-      //   attribution:
-      //     '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-      // }
+      'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      { maxZoom: 19 }
     );
 
-    // Define OpenSeaMap layer for nautical markers
-    const openSeaMapLayer = L.tileLayer(
-      'https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png'
-      // {
-      //   attribution:
-      //     '&copy; <a href="https://www.openseamap.org/">OpenSeaMap</a> contributors',
-      // }
+    // Depth-shaded nautical base: atlas-style colouring where shallow water is
+    // clearly distinguished from deep water.
+    const emodnetDepthBase = L.tileLayer.wms(emodnetWmsUrl, {
+      layers: 'emodnet:mean_atlas_land',
+      format: 'image/png',
+      transparent: false,
+      version: '1.3.0',
+    });
+
+    // --- Overlay layers ---
+
+    // OpenSeaMap seamarks: rocks, wrecks, obstructions, buoys, beacons, etc.
+    // (rendered from the OpenStreetMap seamark:* tagging scheme).
+    const seaMarkLayer = L.tileLayer(
+      'https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png',
+      { maxZoom: 18 }
     );
 
-    // Define bathymetry (depth contours) layer from OpenSeaMap
-    // const depthContourLayer = L.tileLayer(
-    //   'https://tiles.openseamap.org/bathymetry/{z}/{x}/{y}.png',
-    //   // {
-    //   //   attribution:
-    //   //     '&copy; <a href="https://www.openseamap.org/">OpenSeaMap Bathymetry</a> contributors',
-    //   // }
-    // );
+    // Numbered depth contours from EMODnet, drawn transparently on top of the
+    // chosen base so you can read the depth of the water you are crossing.
+    const depthContourLayer = L.tileLayer.wms(emodnetWmsUrl, {
+      layers: 'emodnet:contours',
+      format: 'image/png',
+      transparent: true,
+      version: '1.3.0',
+    });
 
-    // Add OpenStreetMap as the base layer
-    openStreetMapLayer.addTo(this.map);
+    // Multi-colour depth shading as a transparent overlay. EMODnet's grid is
+    // coarse (~115 m), so it looks blocky when zoomed right in; it is therefore
+    // an opt-in overlay rather than on by default, handy for a quick read of
+    // where the shallow water lies when planning a passage.
+    const depthShadingLayer = L.tileLayer.wms(emodnetWmsUrl, {
+      layers: 'emodnet:mean_multicolour',
+      format: 'image/png',
+      transparent: true,
+      version: '1.3.0',
+      opacity: 0.6,
+    });
 
-    // Define overlay layers
-    const overlayMaps: L.Control.LayersObject = {
-      'Nautical Markers': openSeaMapLayer,
-      // 'Depth Contours': depthContourLayer,
+    // Default view: muted sea base (land de-emphasised) + seamarks + depth
+    // contours, so the water, the dangers and the depths are the focus while
+    // the chart stays clean.
+    seaBaseLayer.addTo(this.map);
+    seaMarkLayer.addTo(this.map);
+    depthContourLayer.addTo(this.map);
+
+    const baseMaps: L.Control.LayersObject = {
+      'Sea (light)': seaBaseLayer,
+      'Sea depth (EMODnet)': emodnetDepthBase,
+      OpenStreetMap: openStreetMapLayer,
     };
 
-    // Add layer control to toggle overlays
-    L.control.layers({}, overlayMaps).addTo(this.map);
+    const overlayMaps: L.Control.LayersObject = {
+      'Nautical markers (rocks, wrecks)': seaMarkLayer,
+      'Depth contours': depthContourLayer,
+      'Depth shading': depthShadingLayer,
+    };
 
-    // Optionally, add one or both overlays initially
-    openSeaMapLayer.addTo(this.map);
-    // depthContourLayer.addTo(this.map);
+    // Layer switcher so the user can toggle bases and overlays.
+    L.control.layers(baseMaps, overlayMaps).addTo(this.map);
+
+    // The map now exists, so it is safe to attach the move handlers.
+    this.setupMapEventHandlers();
   }
 
   private setupMapEventHandlers(): void {
